@@ -6,6 +6,7 @@ from flask_marshmallow import Marshmallow
 from flask import request
 from flask import jsonify
 from flask_cors import CORS
+from datetime import datetime
 import jwt
 
 
@@ -28,7 +29,7 @@ CORS(app)
 db = SQLAlchemy(app)
 
 
-from .models.user import User, UserSchema
+# from .models.user import User, UserSchema
 # from .models.coin import Coin, CoinSchema
 
 # transaction_schema = CoinSchema()
@@ -36,23 +37,53 @@ from .models.user import User, UserSchema
 
 
 
-# class User(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     user_name = db.Column(db.String(30), unique=True)
-#     hashed_password = db.Column(db.String(128))
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_name = db.Column(db.String(30), unique=True)
+    hashed_password = db.Column(db.String(128))
 
-#     def __init__(self, user_name, password):
-#         super(User, self).__init__(user_name=user_name)
-#         self.hashed_password = bcrypt.generate_password_hash(password)
+    def __init__(self, user_name, password):
+        super(User, self).__init__(user_name=user_name)
+        self.hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
 
-# class UserSchema(ma.Schema):
-#     class Meta:
-#         fields = ("id", "user_name")
-#         model = User
+class UserSchema(ma.Schema):
+    class Meta:
+        fields = ("id", "user_name")
+        model = User
 
 
 user_schema = UserSchema()
+
+
+SECRET_KEY = "b'|\xe7\xbfU3`\xc4\xec\xa7\xa9zf:}\xb5\xc7\xb9\x139^3@Dv'"
+
+def create_token(user_id):
+    payload = {
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(days=4),
+        'iat': datetime.datetime.utcnow(),
+        'sub': user_id
+    }
+    return jwt.encode(
+        payload,
+        SECRET_KEY,
+        algorithm='HS256'
+    )
+
+
+def extract_auth_token(authenticated_request):
+    auth_header = authenticated_request.headers.get('Authorization')
+    if auth_header:
+        return auth_header.split(" ")[1]
+    else:
+        return None
+
+
+def decode_token(token):
+    payload = jwt.decode(token, SECRET_KEY, 'HS256')
+    return payload['sub']
+
+
 
 @app.route('/hello', methods=['GET'])
 def hello_world():
@@ -69,8 +100,11 @@ def user():
     if(existingUser != None):
         return "User Already Exists"
     user_instance = User(user_name, password)
+    print(user_instance.hashed_password)
     db.session.add(user_instance)
     db.session.commit()
+    user_instance2 = User.query.filter_by(user_name=user_name).first()
+    print(user_instance2.hashed_password)
     return jsonify(user_schema.dump(user_instance))
 
 
@@ -81,10 +115,10 @@ def authentication():
     if user_name is None or password is None or user_name is "" or password is "":
         abort(400)
     user_instance = User.query.filter_by(user_name=user_name).first()
-    # if user_instance is None:
-        # abort(403)
-    if not bcrypt.check_password_hash(password,user_instance.hashed_password):
+    if user_instance is None:
         abort(403)
-    print(str(user_instance.hashed_password))
-    print(str(bcrypt.generate_password_hash(password)))
-    return jsonify(user_name = user_name)
+    if not bcrypt.check_password_hash(user_instance.hashed_password,password):
+        abort(403)
+    tkn = create_token(user_instance.id)
+    return jsonify(token=tkn)
+
