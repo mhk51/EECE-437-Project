@@ -1,3 +1,4 @@
+from sched import scheduler
 from flask import abort
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
@@ -9,11 +10,30 @@ from flask_cors import CORS
 import datetime
 from datetime import timedelta 
 import jwt
+from requests import Request,Session
+from requests.exceptions import Timeout,TooManyRedirects,ConnectionError
+import json
+from flask_apscheduler import APScheduler
 
 
+class Config:
+    SCHEDULER_API_ENABLED = True
+
+# create app
 app = Flask(__name__)
+app.config.from_object(Config())
+
 bcrypt = Bcrypt(app)
 ma = Marshmallow(app)
+scheduler = APScheduler()
+# if you don't wanna use a config, you can set options here:
+# scheduler.api_enabled = True
+scheduler.init_app(app)
+scheduler.start()
+
+
+if __name__ == '__main__':
+    app.run()
 # SQLALCHEMY_DATABASE_URI = "mysql+mysqlconnector://{username}:{password}@{hostname}/{databasename}".format(
 #     username="moekach",
 #     password="yypQr2G7E@3k5jY",
@@ -123,3 +143,36 @@ def authentication():
     tkn = create_token(user_instance.id)
     return jsonify(token=tkn)
 
+
+@scheduler.task('interval',id='getCryptoPrices',seconds = 30)
+def getCryptoPrices():
+    with scheduler.app.app_context():
+        url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+        headers = {
+        'Accepts': 'application/json',
+        'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+        }
+        session = Session()
+        session.headers.update(headers)
+
+        try:
+            response = session.get(url)
+            data = json.loads(response.text)
+
+            with open('test.json', 'w') as outfile:
+                json.dump(data, outfile,indent=4)
+            bitcoin =  data['data'][0]
+            bitcoinData = {
+                "id": bitcoin['id'],
+                'name':bitcoin['name'],
+                'price':bitcoin['quote']['USD']['price']
+            }
+            ethereum = data['data'][1]
+            ethereumData = {
+                "id": ethereum['id'],
+                'name':ethereum['name'],
+                'price':ethereum['quote']['USD']['price']
+            }
+            print(ethereumData)
+        except (ConnectionError, Timeout, TooManyRedirects) as e:
+            print(e)
