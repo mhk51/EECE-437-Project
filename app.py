@@ -144,35 +144,37 @@ def authentication():
     return jsonify(token=tkn)
 
 
-@scheduler.task('interval',id='getCryptoPrices',seconds = 30)
+# @scheduler.task('interval',id='getCryptoPrices',seconds = 30)
+@app.route('/getCrypto', methods=['GET'])
 def getCryptoPrices():
-    with scheduler.app.app_context():
-        url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
-        headers = {
-        'Accepts': 'application/json',
-        'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+    # with scheduler.app.app_context():
+    url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+    headers = {
+    'Accepts': 'application/json',
+    'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+    }
+    session = Session()
+    session.headers.update(headers)
+
+    try:
+        response = session.get(url)
+        data = json.loads(response.text)
+
+        with open('test.json', 'w') as outfile:
+            json.dump(data, outfile,indent=4)
+        bitcoin =  data['data'][0]
+        bitcoinData = {
+            "id": bitcoin['id'],
+            'name':bitcoin['name'],
+            'price':bitcoin['quote']['USD']['price']
         }
-        session = Session()
-        session.headers.update(headers)
-
-        try:
-            response = session.get(url)
-            data = json.loads(response.text)
-
-            with open('test.json', 'w') as outfile:
-                json.dump(data, outfile,indent=4)
-            bitcoin =  data['data'][0]
-            bitcoinData = {
-                "id": bitcoin['id'],
-                'name':bitcoin['name'],
-                'price':bitcoin['quote']['USD']['price']
-            }
-            ethereum = data['data'][1]
-            ethereumData = {
-                "id": ethereum['id'],
-                'name':ethereum['name'],
-                'price':ethereum['quote']['USD']['price']
-            }
-            print(ethereumData)
-        except (ConnectionError, Timeout, TooManyRedirects) as e:
-            print(e)
+        ethereum = data['data'][1]
+        ethereumData = {
+            "id": ethereum['id'],
+            'name':ethereum['name'],
+            'price':ethereum['quote']['USD']['price']
+        }
+        print(ethereumData)
+    except (ConnectionError, Timeout, TooManyRedirects) as e:
+        print(e)
+    return jsonify(eth=ethereumData,btc=bitcoinData)
