@@ -151,11 +151,9 @@ def user():
     if(existingUser != None):
         return "User Already Exists"
     user_instance = User(user_name, password)
-    print(user_instance.hashed_password)
     db.session.add(user_instance)
     db.session.commit()
     user_instance2 = User.query.filter_by(user_name=user_name).first()
-    print(user_instance2.hashed_password)
     return jsonify(user_schema.dump(user_instance))
 
 
