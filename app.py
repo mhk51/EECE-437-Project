@@ -1,5 +1,5 @@
 from sched import scheduler
-from flask import abort
+from flask import abort, render_template, session
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
@@ -8,16 +8,19 @@ from flask import request
 from flask import jsonify
 from flask_cors import CORS
 import datetime
-from datetime import timedelta 
+from flask_cors import CORS, cross_origin
+from datetime import timedelta
 import jwt
-from requests import Request,Session
-from requests.exceptions import Timeout,TooManyRedirects,ConnectionError
+from requests import Request, Session
+from requests.exceptions import Timeout, TooManyRedirects, ConnectionError
 import json
 from flask_apscheduler import APScheduler
+from flask_mail import Mail, Message
 
 
 class Config:
     SCHEDULER_API_ENABLED = True
+
 
 # create app
 app = Flask(__name__)
@@ -30,7 +33,6 @@ scheduler = APScheduler()
 scheduler.init_app(app)
 scheduler.start()
 
-
 if __name__ == '__main__':
     app.run()
 
@@ -41,8 +43,7 @@ app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 # app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 CORS(app)
 db = SQLAlchemy(app)
-
-
+Email = Mail(app)
 from .models.user import User, UserSchema
 from .models.coin import Coin, CoinSchema
 
@@ -50,24 +51,24 @@ from .models.coin import Coin, CoinSchema
 # transactions_schema = CoinSchema(many=True)
 
 
-
 # class User(db.Model):
 #     id = db.Column(db.Integer, primary_key=True)
-#     user_name = db.Column(db.String(30), unique=True)
+#     username = db.Column(db.String(30), unique=True)
 #     hashed_password = db.Column(db.String(128))
 
-#     def __init__(self, user_name, password):
-#         super(User, self).__init__(user_name=user_name)
+#     def __init__(self, username, password):
+#         super(User, self).__init__(username=username)
 #         self.hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
 
 # class UserSchema(ma.Schema):
 #     class Meta:
-#         fields = ("id", "user_name")
+#         fields = ("id", "username")
 #         model = User
 
 
 user_schema = UserSchema()
+
 
 # class Coin(db.Model):
 #     __table_args__ = (
@@ -85,7 +86,6 @@ user_schema = UserSchema()
 #     coin_supply = db.Column(db.Float,nullable = False) 
 
 
-
 #     def __init__(self, id, name, price, price_change_24h,price_change_1h,volume_24h,volume_change_24h,market_cap,supply):
 #         super(Coin, self).__init__(coin_id=id,
 #                                    coin_name=name,
@@ -96,7 +96,7 @@ user_schema = UserSchema()
 #                                    coin_volume_change_24h = volume_change_24h,
 #                                    coin_market_cap = market_cap,
 #                                    coin_supply = supply,
-                                
+
 #                                    added_date=datetime.datetime.now()
 #                                    )
 
@@ -106,8 +106,18 @@ user_schema = UserSchema()
 #         fields = ("coin_id", "coin_name", "added_date", "coin_price", "coin_24h_change","coin_volumen")
 #         model = Coin
 
+@app.route('/Sign_in.html')
+def init():
+    return render_template('Sign_in.html')
+
+
+@app.route('/Sign_up.html')
+def index():
+    return render_template('Sign_up.html')
+
 
 SECRET_KEY = "b'|\xe7\xbfU3`\xc4\xec\xa7\xa9zf:}\xb5\xc7\xb9\x139^3@Dv'"
+
 
 def create_token(user_id):
     payload = {
@@ -135,50 +145,50 @@ def decode_token(token):
     return payload['sub']
 
 
-
 @app.route('/hello', methods=['GET'])
 def hello_world():
     return 'Hello World!'
 
 
-
 @app.route('/user', methods=['POST'])
 def user():
-    user_name = request.json["user_name"]
+    username = request.json["username"]
     password = request.json["password"]
-    existingUser = User.query.filter_by(user_name=user_name).first()
+    existingUser = User.query.filter_by(username=username).first()
 
-    if(existingUser != None):
+    if (existingUser != None):
         return "User Already Exists"
-    user_instance = User(user_name, password)
+    user_instance = User(username, password)
+    print(user_instance.hashed_password)
     db.session.add(user_instance)
     db.session.commit()
-    user_instance2 = User.query.filter_by(user_name=user_name).first()
+    user_instance2 = User.query.filter_by(username=username).first()
+    print(user_instance2.hashed_password)
     return jsonify(user_schema.dump(user_instance))
 
 
 @app.route('/authentication', methods=['POST'])
 def authentication():
-    user_name = request.json["user_name"]
+    username = request.json["username"]
     password = request.json["password"]
-    if user_name is None or password is None or user_name is "" or password is "":
+    if username is None or password is None or username is "" or password is "":
         abort(400)
-    user_instance = User.query.filter_by(user_name=user_name).first()
+    user_instance = User.query.filter_by(username=username).first()
     if user_instance is None:
         abort(403)
-    if not bcrypt.check_password_hash(user_instance.hashed_password,password):
+    if not bcrypt.check_password_hash(user_instance.hashed_password, password):
         abort(403)
     tkn = create_token(user_instance.id)
     return jsonify(token=tkn)
 
 
-@scheduler.task('interval',id='getCryptoPrices',seconds = 30)
+@scheduler.task('interval', id='getCryptoPrices', seconds=30)
 def getCryptoPrices():
     with scheduler.app.app_context():
         url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
         headers = {
-        'Accepts': 'application/json',
-        'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+            'Accepts': 'application/json',
+            'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
         }
         session = Session()
         session.headers.update(headers)
@@ -189,8 +199,8 @@ def getCryptoPrices():
             data = data['data']
             # with open('test.json', 'w') as outfile:
             #     json.dump(data, outfile,indent=4)
-            for index in range(0,6):
-                if(index == 2 or index == 4): #skipping USDT and USD-C
+            for index in range(0, 6):
+                if (index == 2 or index == 4):  # skipping USDT and USD-C
                     continue
                 coin = data[index]
                 id = coin['id']
@@ -203,24 +213,73 @@ def getCryptoPrices():
                 volume_change_24h = coinData['volume_change_24h'],
                 market_cap = coinData['market_cap'],
                 supply = coin['circulating_supply'],
-                coin_instance = Coin(id,name,price,price_change_24h,price_change_1h,volume_24h,volume_change_24h,market_cap,supply)
+                coin_instance = Coin(id, name, price, price_change_24h, price_change_1h, volume_24h, volume_change_24h,
+                                     market_cap, supply)
                 print(coin_instance)
                 db.session.add(coin_instance)
                 db.session.commit()
         except (ConnectionError, Timeout, TooManyRedirects) as e:
             print(e)
-        return jsonify(message = 'success')
+        return jsonify(message='success')
 
 
-@app.route('/getTrend',methods = ['GET'])
+@app.route('/getTrend', methods=['GET'])
 def getTrend():
     coinList = Coin.query.all()
     dictionary = {}
     for coin in coinList:
-        if(coin.coin_name not in dictionary):
-            dictionary[coin.coin_name] = [{'price':coin.coin_price,'date':coin.added_date}]
+        if (coin.coin_name not in dictionary):
+            dictionary[coin.coin_name] = [{'price': coin.coin_price, 'date': coin.added_date}]
         else:
-            dictionary[coin.coin_name].append({'price':coin.coin_price,'date':coin.added_date})
-        print(coin.coin_name,coin.coin_price,coin.added_date)
+            dictionary[coin.coin_name].append({'price': coin.coin_price, 'date': coin.added_date})
+        print(coin.coin_name, coin.coin_price, coin.added_date)
     return jsonify(dictionary)
 
+
+@app.route('/add_user', methods=['POST'])
+@cross_origin(supports_credentials=True)
+def add_user():
+    name = request.json['username']
+    pwd = request.json['password']
+    mail = request.json['mail']
+    dob = request.json['dob']
+    if not name or not pwd or not dob or not mail:
+        # name is empty or pwd is empty
+        abort(400)
+    # check for unique name
+    not_unique = User.query.filter_by(username=name).first()
+    # similar username exists
+    if not_unique:
+        abort(403)
+    else:
+        newuser = User(name, pwd, mail, dob)
+        db.session.add(newuser)
+        db.session.commit()
+        sender = 'terkiz.club@gmail.com'
+        recipients = [mail]
+        subject ="Welcome to Mokash Trading Bot"
+        msg = Message(subject, sender=sender, recipients=recipients)
+        msg.body = "Thank you for joining Mokash Trading Bot, " + name+ " \n We hope that you will like it here! \n Feel free to look through the site. \n Best,\n MoKash Trading Team. "
+        Email.send(msg)
+
+        return "success"
+
+
+@app.route('/authentication', methods=['POST'])
+def authenticate():
+    usname = request.json['username']
+    pwd = request.json['password']
+    if not id or not pwd:
+        abort(400)
+    user_db = User.query.filter_by(username=usname).first()
+    # no username exists
+    if user_db is None:
+        abort(403)
+    # password don't match
+    if not bcrypt.check_password_hash(user_db.password, pwd):
+        abort(403)
+    # create token
+    token = create_token(user_db.id)
+    session["id"] = user_db.id
+    session.modified = True
+    return jsonify({"token": token})
