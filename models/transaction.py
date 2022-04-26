@@ -1,4 +1,4 @@
-from ..app import db, bcrypt, ma
+from app import db, bcrypt, ma
 import datetime
 
 class Transaction(db.Model):

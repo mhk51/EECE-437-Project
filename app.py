@@ -29,9 +29,9 @@ app.config.from_object(Config())
 bcrypt = Bcrypt(app)
 ma = Marshmallow(app)
 scheduler = APScheduler()
-# scheduler.api_enabled = True
+scheduler.api_enabled = True
 scheduler.init_app(app)
-scheduler.start()
+# scheduler.start()
 
 if __name__ == '__main__':
     app.run()
@@ -44,67 +44,34 @@ app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 CORS(app)
 db = SQLAlchemy(app)
 Email = Mail(app)
-from .models.user import User, UserSchema
-from .models.coin import Coin, CoinSchema
+from models.user import User, UserSchema
+from models.coin import Coin, CoinSchema
 
 # transaction_schema = CoinSchema()
 # transactions_schema = CoinSchema(many=True)
 
 
-# class User(db.Model):
-#     id = db.Column(db.Integer, primary_key=True)
-#     username = db.Column(db.String(30), unique=True)
-#     hashed_password = db.Column(db.String(128))
-
-#     def __init__(self, username, password):
-#         super(User, self).__init__(username=username)
-#         self.hashed_password = bcrypt.generate_password_hash(password).decode('utf-8')
 
 
-# class UserSchema(ma.Schema):
-#     class Meta:
-#         fields = ("id", "username")
-#         model = User
-
+class Bot(db.Model):
+    bot_id = db.Column(db.Integer,primary_key = True)
+    coin_name = db.Column(db.String(30))
+    buy_percentage = db.Column(db.Float)
+    is_active = db.Column(db.Boolean)
+    def __init__(self,bot_id,coin_name):
+        super().__init__(bot_id = bot_id,coin_name= coin_name,is_active = False)
+    def activate(self):
+        self.activate = True
+    def deactivate(self):
+        self.activate = False
+    def buy(self):
+        user_intance = User.query.filter_by(id = self.bot_id)
+        transfer_amount = user_intance.usd_amount*self.buy_percentage
+        user_intance.usd_amount -= transfer_amount
+        setattr(user_intance,self.coin_name,getattr(user_intance,self.coin_name)+2) 
 
 user_schema = UserSchema()
 
-
-# class Coin(db.Model):
-#     __table_args__ = (
-#         db.UniqueConstraint('coin_id', 'added_date','coin_price', name='unique_component_commit'),
-#     )
-#     coin_id = db.Column(db.Integer, primary_key=True)  #primary
-#     coin_name = db.Column(db.String(30))
-#     added_date = db.Column(db.DateTime, primary_key=True)
-#     coin_price = db.Column(db.Float, nullable=False)
-#     coin_price_change_1h = db.Column(db.Float,nullable=False)
-#     coin_price_change_24h = db.Column(db.Float,nullable = False)
-#     coin_volume_24h = db.Column(db.Float, nullable=False)
-#     coin_volume_change_24h = db.Column(db.Float,nullable = False)  
-#     coin_market_cap = db.Column(db.Float,nullable=False)
-#     coin_supply = db.Column(db.Float,nullable = False) 
-
-
-#     def __init__(self, id, name, price, price_change_24h,price_change_1h,volume_24h,volume_change_24h,market_cap,supply):
-#         super(Coin, self).__init__(coin_id=id,
-#                                    coin_name=name,
-#                                    coin_price=price,
-#                                    coin_price_change_1h=price_change_1h,
-#                                    coin_price_change_24h = price_change_24h,
-#                                    coin_volume_24h = volume_24h,
-#                                    coin_volume_change_24h = volume_change_24h,
-#                                    coin_market_cap = market_cap,
-#                                    coin_supply = supply,
-
-#                                    added_date=datetime.datetime.now()
-#                                    )
-
-
-# class CoinSchema(ma.Schema):
-#     class Meta:
-#         fields = ("coin_id", "coin_name", "added_date", "coin_price", "coin_24h_change","coin_volumen")
-#         model = Coin
 
 @app.route('/Sign_in.html')
 def init():
@@ -182,7 +149,7 @@ def authentication():
     return jsonify(token=tkn)
 
 
-@scheduler.task('interval', id='getCryptoPrices', seconds=30)
+@scheduler.task('interval', id='getCryptoPrices', seconds=5)
 def getCryptoPrices():
     with scheduler.app.app_context():
         url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
@@ -199,8 +166,8 @@ def getCryptoPrices():
             data = data['data']
             # with open('test.json', 'w') as outfile:
             #     json.dump(data, outfile,indent=4)
-            for index in range(0, 6):
-                if (index == 2 or index == 4):  # skipping USDT and USD-C
+            for index in range(0, 4):
+                if (index == 2):  # skipping USDT and USD-C
                     continue
                 coin = data[index]
                 id = coin['id']
