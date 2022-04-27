@@ -16,15 +16,16 @@ from requests.exceptions import Timeout, TooManyRedirects, ConnectionError
 import json
 from flask_apscheduler import APScheduler
 from flask_mail import Mail, Message
+from db_config import SQLALCHEMY_DATABASE_URI
 
-
-class Config:
-    SCHEDULER_API_ENABLED = True
+# class Config:
+    # SCHEDULER_API_ENABLED = True
 
 
 # create app
 app = Flask(__name__)
-app.config.from_object(Config())
+app.secret_key = "super secret key"
+# app.config.from_object(Config())
 
 bcrypt = Bcrypt(app)
 ma = Marshmallow(app)
@@ -36,7 +37,8 @@ scheduler.init_app(app)
 if __name__ == '__main__':
     app.run()
 
-SQLALCHEMY_DATABASE_URI = 'postgresql://oswkpkahzgjkiv:c3b16a75277b0ab027d691af498e02311a4bd71d326fbdb5bc44963ecb7b2d63@ec2-99-80-170-190.eu-west-1.compute.amazonaws.com:5432/de3m9bpar6f74q'
+# SQLALCHEMY_DATABASE_URI = 'postgresql://oswkpkahzgjkiv:c3b16a75277b0ab027d691af498e02311a4bd71d326fbdb5bc44963ecb7b2d63@ec2-99-80-170-190.eu-west-1.compute.amazonaws.com:5432/de3m9bpar6f74q'
+
 
 app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 # app.config["SQLALCHEMY_POOL_RECYCLE"] = 299
@@ -44,31 +46,17 @@ app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 CORS(app)
 db = SQLAlchemy(app)
 Email = Mail(app)
+
 from models.user import User, UserSchema
 from models.coin import Coin, CoinSchema
+from models.bot import Bot
+
 
 # transaction_schema = CoinSchema()
 # transactions_schema = CoinSchema(many=True)
 
 
 
-
-class Bot(db.Model):
-    bot_id = db.Column(db.Integer,primary_key = True)
-    coin_name = db.Column(db.String(30))
-    buy_percentage = db.Column(db.Float)
-    is_active = db.Column(db.Boolean)
-    def __init__(self,bot_id,coin_name):
-        super().__init__(bot_id = bot_id,coin_name= coin_name,is_active = False)
-    def activate(self):
-        self.activate = True
-    def deactivate(self):
-        self.activate = False
-    def buy(self):
-        user_intance = User.query.filter_by(id = self.bot_id)
-        transfer_amount = user_intance.usd_amount*self.buy_percentage
-        user_intance.usd_amount -= transfer_amount
-        setattr(user_intance,self.coin_name,getattr(user_intance,self.coin_name)+2) 
 
 user_schema = UserSchema()
 
@@ -111,42 +99,6 @@ def decode_token(token):
     payload = jwt.decode(token, SECRET_KEY, 'HS256')
     return payload['sub']
 
-
-@app.route('/hello', methods=['GET'])
-def hello_world():
-    return 'Hello World!'
-
-
-@app.route('/user', methods=['POST'])
-def user():
-    username = request.json["username"]
-    password = request.json["password"]
-    existingUser = User.query.filter_by(username=username).first()
-
-    if (existingUser != None):
-        return "User Already Exists"
-    user_instance = User(username, password)
-    print(user_instance.hashed_password)
-    db.session.add(user_instance)
-    db.session.commit()
-    user_instance2 = User.query.filter_by(username=username).first()
-    print(user_instance2.hashed_password)
-    return jsonify(user_schema.dump(user_instance))
-
-
-@app.route('/authentication', methods=['POST'])
-def authentication():
-    username = request.json["username"]
-    password = request.json["password"]
-    if username is None or password is None or username is "" or password is "":
-        abort(400)
-    user_instance = User.query.filter_by(username=username).first()
-    if user_instance is None:
-        abort(403)
-    if not bcrypt.check_password_hash(user_instance.hashed_password, password):
-        abort(403)
-    tkn = create_token(user_instance.id)
-    return jsonify(token=tkn)
 
 
 @scheduler.task('interval', id='getCryptoPrices', seconds=5)
@@ -220,6 +172,9 @@ def add_user():
         abort(403)
     else:
         newuser = User(name, pwd, mail, dob)
+        bot_instance = Bot(newuser.id,'bitcoin_amount')
+        db.session.add(bot_instance)
+        db.session.commit()
         db.session.add(newuser)
         db.session.commit()
         sender = 'terkiz.club@gmail.com'
@@ -227,9 +182,9 @@ def add_user():
         subject ="Welcome to Mokash Trading Bot"
         msg = Message(subject, sender=sender, recipients=recipients)
         msg.body = "Thank you for joining Mokash Trading Bot, " + name+ " \n We hope that you will like it here! \n Feel free to look through the site. \n Best,\n MoKash Trading Team. "
-        Email.send(msg)
+        # Email.send(msg)
 
-        return "success"
+        return jsonify(user_schema.dump(newuser))
 
 
 @app.route('/authentication', methods=['POST'])
@@ -243,10 +198,25 @@ def authenticate():
     if user_db is None:
         abort(403)
     # password don't match
-    if not bcrypt.check_password_hash(user_db.password, pwd):
+    if not bcrypt.check_password_hash(user_db.hashed_password, pwd):
         abort(403)
     # create token
     token = create_token(user_db.id)
     session["id"] = user_db.id
     session.modified = True
     return jsonify({"token": token})
+
+
+@app.route('/makeTransaction',methods = ['GET'])
+def makeTransaction():
+    id = session['id']
+    bot_intance = Bot.query.filter_by(bot_id = id).first()
+    bot_intance.sell()
+    return 'success'
+
+@app.route('/activateBot',methods = ['GET'])
+def activateBot():
+    id = session['id']
+    bot_intance = Bot.query.get(id)
+    bot_intance.activate()
+    return 'success'

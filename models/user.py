@@ -24,6 +24,6 @@ class UserSchema(ma.Schema):
         fields = ("id", "username", "mail", "dob",'bitcoin_amount','ethereum_amount','bnb_amount','usd_amount')
         model = User
 
-
-
 user_schema = UserSchema()
+
+
