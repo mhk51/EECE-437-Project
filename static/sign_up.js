@@ -1,20 +1,32 @@
-var token = ""
-var sign_up_btn = document.getElementById("signup_btn")
-if (sign_up_btn) { sign_up_btn.addEventListener("click", create_user()); }
-const SERVER_URL = "http://127.0.0.1:5000"
-function create_user() {
-    var usn = document.getElementById("username_input").value
-    var pwd = document.getElementById("password_input").value
-    var repwd = document.getElementById("re_password_input").value
-    var email = document.getElementById("email_input").value
-    var dob = document.getElementById("dob_input").value
+var token = "";
+var username_field = document.getElementById("username");
+var pwd_field = document.getElementById("password");
+var repwd_field = document.getElementById("re_password");
+var email_field = document.getElementById("mail");
+var dob_field = document.getElementById("dob");
+
+
+var sign_up_btn = document.getElementById("signup_btn");
+sign_up_btn.addEventListener("click", create_user());
+
+var SERVER_URL = "http://127.0.0.1:5000"
+
+async function create_user() {
+
+    var usn = username_field.value
+    var pwd = pwd_field.value
+    var repwd = repwd_field.value
+    var email = email_field.value
+    var dob = dob_field.value
     if (!usn || !pwd || !repwd || !email || !dob) {
-        alert("Please fill all the fields")
-    } else if (pwd != repwd) {
+        alert(`Please fill all the field ${usn}`)
+    }
+
+    else if (pwd != repwd) {
         alert("Please make sure your paswword and confirmed password match")
     } else {
         var data = { "username": usn, "password": pwd, "mail": email, "dob": dob}
-        fetch(`${SERVER_URL}/add_user`, {
+        await fetch(`${SERVER_URL}/add_user`, {
             credentials: 'same-origin',
             method: 'POST',
             headers: {

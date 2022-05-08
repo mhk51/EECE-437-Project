@@ -1,4 +1,4 @@
-<html>
+<!-- <html>
 
 <head>
    <link rel= "stylesheet" type= "text/css" href="{{ url_for('static', filename='style.css')}}">
@@ -21,5 +21,32 @@
     </form>
 
   </body>
+  <script src="static/sign_up.js"></script>
 
+  </html> -->
+
+  <html>
+
+<head>
+   <link rel= "stylesheet" type= "text/css" href="{{ url_for('static', filename='style.css')}}">
+</head>
+
+<body class="center">
+    <form name="transaction-entry">
+      Username:<br>
+      <input type="text" id="username" name="username"><br>
+      Password:<br>
+      <input type="text" id="password" name="pwd"><br>
+      Confirm Password:<br>
+      <input type="text" id="re_password" name="c_pwd"><br>
+      Date of Birth:<br>
+      <input type="text" id="dob" name="dob" ><br>
+      Email:<br>
+      <input type="text" id="mail" name="mail"><br>
+      <br>
+      <input type="submit" id="signup_btn" value="Submit">
+    </form>
+
+  </body>
+  <script src="static/sign_up.js"></script>
   </html>

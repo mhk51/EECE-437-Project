@@ -2,6 +2,7 @@ from sched import scheduler
 from flask import abort, render_template, session
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import desc
 from flask_bcrypt import Bcrypt
 from flask_marshmallow import Marshmallow
 from flask import request
@@ -10,6 +11,7 @@ from flask_cors import CORS
 import datetime
 from flask_cors import CORS, cross_origin
 from datetime import timedelta
+from importlib_metadata import method_cache
 import jwt
 from requests import Request, Session
 from requests.exceptions import Timeout, TooManyRedirects, ConnectionError
@@ -32,10 +34,10 @@ ma = Marshmallow(app)
 scheduler = APScheduler()
 scheduler.api_enabled = True
 scheduler.init_app(app)
-# scheduler.start()
+scheduler.start()
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
 
 # SQLALCHEMY_DATABASE_URI = 'postgresql://oswkpkahzgjkiv:c3b16a75277b0ab027d691af498e02311a4bd71d326fbdb5bc44963ecb7b2d63@ec2-99-80-170-190.eu-west-1.compute.amazonaws.com:5432/de3m9bpar6f74q'
 
@@ -66,9 +68,10 @@ def init():
     return render_template('Sign_in.html')
 
 
-@app.route('/Sign_up.html')
+@app.route('/Sign_up.html',methods = ['GET','POST'])
 def index():
     return render_template('Sign_up.html')
+
 
 
 SECRET_KEY = "b'|\xe7\xbfU3`\xc4\xec\xa7\xa9zf:}\xb5\xc7\xb9\x139^3@Dv'"
@@ -101,7 +104,7 @@ def decode_token(token):
 
 
 
-@scheduler.task('interval', id='getCryptoPrices', seconds=5)
+@scheduler.task('interval', id='getCryptoPrices', seconds=10)
 def getCryptoPrices():
     with scheduler.app.app_context():
         url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
@@ -135,10 +138,22 @@ def getCryptoPrices():
                 coin_instance = Coin(id, name, price, price_change_24h, price_change_1h, volume_24h, volume_change_24h,
                                      market_cap, supply)
                 print(coin_instance)
+
+                coin = Coin.query.order_by(desc(Coin.added_date)).first()
+                
+
+                if coin.coin_price > price:
+                    print("Buy")
+                else:
+                    print('Sell')
                 db.session.add(coin_instance)
                 db.session.commit()
+
         except (ConnectionError, Timeout, TooManyRedirects) as e:
             print(e)
+
+
+        
         return jsonify(message='success')
 
 
@@ -207,16 +222,25 @@ def authenticate():
     return jsonify({"token": token})
 
 
-@app.route('/makeTransaction',methods = ['GET'])
-def makeTransaction():
+@app.route('/Sell',methods = ['GET'])
+def sell_assets():
     id = session['id']
-    bot_intance = Bot.query.filter_by(bot_id = id).first()
+    bot_intance = Bot.query.get(id)
     bot_intance.sell()
+    return 'success'
+
+@app.route('/Buy',methods = ['GET'])
+def buy_assets():
+    coin_name = 'ethereum_amount'
+    id = session['id']
+    bot_intance = Bot.query.get(id)
+    bot_intance.coin_name = coin_name
+    bot_intance.buy()
     return 'success'
 
 @app.route('/activateBot',methods = ['GET'])
 def activateBot():
     id = session['id']
     bot_intance = Bot.query.get(id)
-    bot_intance.activate()
+    bot_intance.switch_activate()
     return 'success'
