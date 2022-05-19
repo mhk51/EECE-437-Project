@@ -9,6 +9,7 @@ from flask import request
 from flask import jsonify
 from flask_cors import CORS
 import datetime
+from dateutil import parser
 from flask_cors import CORS, cross_origin
 from datetime import timedelta
 from importlib_metadata import method_cache
@@ -18,6 +19,10 @@ from requests.exceptions import Timeout, TooManyRedirects, ConnectionError
 import json
 from flask_apscheduler import APScheduler
 from flask_mail import Mail, Message
+from Bot import CoinPrediction
+import requests
+import pandas as pd
+import numpy as np
 from db_config import SQLALCHEMY_DATABASE_URI
 
 # class Config:
@@ -58,7 +63,7 @@ from models.bot import Bot
 # transactions_schema = CoinSchema(many=True)
 
 
-
+model = CoinPrediction('model.json','model_weights.h5')
 
 user_schema = UserSchema()
 
@@ -104,56 +109,100 @@ def decode_token(token):
 
 
 
-@scheduler.task('interval', id='getCryptoPrices', seconds=10)
+# @scheduler.task('interval', id='getCryptoPrices', seconds=60)
+# def getCryptoPrices():
+#     with scheduler.app.app_context():
+#         url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+#         headers = {
+#             'Accepts': 'application/json',
+#             'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+#         }
+#         session = Session()
+#         session.headers.update(headers)
+
+#         try:
+#             response = session.get(url)
+#             data = json.loads(response.text)
+#             data = data['data']
+#             # with open('test.json', 'w') as outfile:
+#             #     json.dump(data, outfile,indent=4)
+#             for index in range(0, 4):
+#                 if (index == 2):  # skipping USDT and USD-C
+#                     continue
+#                 coin = data[index]
+#                 id = coin['id']
+                
+#                 name = coin['name']
+#                 coinData = coin['quote']['USD']
+#                 price = coinData['price']
+#                 price_change_1h = coinData['percent_change_1h'],
+#                 price_change_24h = coinData['percent_change_24h'],
+#                 volume_24h = coinData['volume_24h'],
+#                 volume_change_24h = coinData['volume_change_24h'],
+#                 market_cap = coinData['market_cap'],
+#                 supply = coin['circulating_supply'],
+#                 coin_instance = Coin(id, name, price, price_change_24h, price_change_1h, volume_24h, volume_change_24h,
+#                                      market_cap, supply)
+
+#                 coin = Coin.query.order_by(desc(Coin.added_date)).first()
+                
+#                 if(coin != None):
+#                     if coin.coin_price > price:
+#                         print("Buy")
+#                     else:
+#                         print('Sell')
+#                 db.session.add(coin_instance)
+#                 db.session.commit()
+#                 break
+
+#         except (ConnectionError, Timeout, TooManyRedirects) as e:
+#             print(e)
+
+
+        
+#         return jsonify(message='success')
+
+
+
+@scheduler.task('interval', id='getCryptoPrices', seconds=5)
 def getCryptoPrices():
     with scheduler.app.app_context():
-        url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+        url = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=1000'
         headers = {
-            'Accepts': 'application/json',
-            'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+            'X-CoinAPI-Key': 'ADAF1030-FCA4-4505-B6D0-44AD29F4C081',
         }
-        session = Session()
-        session.headers.update(headers)
-
         try:
-            response = session.get(url)
-            data = json.loads(response.text)
-            data = data['data']
-            # with open('test.json', 'w') as outfile:
-            #     json.dump(data, outfile,indent=4)
-            for index in range(0, 4):
-                if (index == 2):  # skipping USDT and USD-C
-                    continue
-                coin = data[index]
-                id = coin['id']
-                name = coin['name']
-                coinData = coin['quote']['USD']
-                price = coinData['price']
-                price_change_1h = coinData['percent_change_1h'],
-                price_change_24h = coinData['percent_change_24h'],
-                volume_24h = coinData['volume_24h'],
-                volume_change_24h = coinData['volume_change_24h'],
-                market_cap = coinData['market_cap'],
-                supply = coin['circulating_supply'],
-                coin_instance = Coin(id, name, price, price_change_24h, price_change_1h, volume_24h, volume_change_24h,
-                                     market_cap, supply)
-                print(coin_instance)
+            response = requests.get(url, headers=headers)
+            json_object = response.json()  
+            # Writing to sample.json
+            # with open("data.json", "w") as outfile:
+                # outfile.write(json_object)
+            print(json_object)
+            print(type(json_object))
+            df = pd.DataFrame(json_object)
+            # df = pd.read_json('data.json')
+            df = df[['time_period_start','price_open','price_high','price_low','price_close','volume_traded']]
+            for i in range(df.shape[0]-900):
+                # coin_instance = Coin(df.iloc[i])
+                row = df.iloc[i]
+                date = parser.parse(row['time_period_start'])
+                coin_instance = Coin("Bitcoin",row['price_open'],row['price_high'],row['price_low'],row['price_close'],row['volume_traded'],date)
+                # db.session.add(coin_instance)
+            df = df.drop('time_period_start',axis=1).pct_change().dropna()
+            
+            features = []
+            input_data = df.iloc[0:5].values
+            features.append(input_data)
+            features = np.array(features)
 
-                coin = Coin.query.order_by(desc(Coin.added_date)).first()
-                
+            print(model.predict_coin(features))
 
-                if coin.coin_price > price:
-                    print("Buy")
-                else:
-                    print('Sell')
-                db.session.add(coin_instance)
-                db.session.commit()
 
         except (ConnectionError, Timeout, TooManyRedirects) as e:
             print(e)
 
 
-        
+        # db.session.commit()
         return jsonify(message='success')
 
 
@@ -244,3 +293,4 @@ def activateBot():
     bot_intance = Bot.query.get(id)
     bot_intance.switch_activate()
     return 'success'
+
