@@ -109,85 +109,23 @@ def decode_token(token):
 
 
 
-# @scheduler.task('interval', id='getCryptoPrices', seconds=60)
-# def getCryptoPrices():
-#     with scheduler.app.app_context():
-#         url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
-#         headers = {
-#             'Accepts': 'application/json',
-#             'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
-#         }
-#         session = Session()
-#         session.headers.update(headers)
-
-#         try:
-#             response = session.get(url)
-#             data = json.loads(response.text)
-#             data = data['data']
-#             # with open('test.json', 'w') as outfile:
-#             #     json.dump(data, outfile,indent=4)
-#             for index in range(0, 4):
-#                 if (index == 2):  # skipping USDT and USD-C
-#                     continue
-#                 coin = data[index]
-#                 id = coin['id']
-                
-#                 name = coin['name']
-#                 coinData = coin['quote']['USD']
-#                 price = coinData['price']
-#                 price_change_1h = coinData['percent_change_1h'],
-#                 price_change_24h = coinData['percent_change_24h'],
-#                 volume_24h = coinData['volume_24h'],
-#                 volume_change_24h = coinData['volume_change_24h'],
-#                 market_cap = coinData['market_cap'],
-#                 supply = coin['circulating_supply'],
-#                 coin_instance = Coin(id, name, price, price_change_24h, price_change_1h, volume_24h, volume_change_24h,
-#                                      market_cap, supply)
-
-#                 coin = Coin.query.order_by(desc(Coin.added_date)).first()
-                
-#                 if(coin != None):
-#                     if coin.coin_price > price:
-#                         print("Buy")
-#                     else:
-#                         print('Sell')
-#                 db.session.add(coin_instance)
-#                 db.session.commit()
-#                 break
-
-#         except (ConnectionError, Timeout, TooManyRedirects) as e:
-#             print(e)
-
-
-        
-#         return jsonify(message='success')
-
-
-
-@scheduler.task('interval', id='getCryptoPrices', seconds=5)
+@scheduler.task('interval', id='getCryptoPrices', seconds=10)
 def getCryptoPrices():
     with scheduler.app.app_context():
-        url = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=1000'
+        url = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=200'
         headers = {
             'X-CoinAPI-Key': 'ADAF1030-FCA4-4505-B6D0-44AD29F4C081',
         }
         try:
             response = requests.get(url, headers=headers)
             json_object = response.json()  
-            # Writing to sample.json
-            # with open("data.json", "w") as outfile:
-                # outfile.write(json_object)
-            print(json_object)
-            print(type(json_object))
             df = pd.DataFrame(json_object)
-            # df = pd.read_json('data.json')
             df = df[['time_period_start','price_open','price_high','price_low','price_close','volume_traded']]
-            for i in range(df.shape[0]-900):
-                # coin_instance = Coin(df.iloc[i])
+            for i in range(df.shape[0]):
                 row = df.iloc[i]
                 date = parser.parse(row['time_period_start'])
                 coin_instance = Coin("Bitcoin",row['price_open'],row['price_high'],row['price_low'],row['price_close'],row['volume_traded'],date)
-                # db.session.add(coin_instance)
+                db.session.merge(coin_instance)
             df = df.drop('time_period_start',axis=1).pct_change().dropna()
             
             features = []
@@ -202,7 +140,7 @@ def getCryptoPrices():
             print(e)
 
 
-        # db.session.commit()
+        db.session.commit()
         return jsonify(message='success')
 
 
@@ -212,10 +150,10 @@ def getTrend():
     dictionary = {}
     for coin in coinList:
         if (coin.coin_name not in dictionary):
-            dictionary[coin.coin_name] = [{'price': coin.coin_price, 'date': coin.added_date}]
+            dictionary[coin.coin_name] = [{'date': coin.date,'open': coin.price_open,'high':coin.price_high,'low':coin.price_low,'close':coin.price_low,'volume':coin.volume}]
         else:
-            dictionary[coin.coin_name].append({'price': coin.coin_price, 'date': coin.added_date})
-        print(coin.coin_name, coin.coin_price, coin.added_date)
+            dictionary[coin.coin_name].append({'date': coin.date,'open': coin.price_open,'high':coin.price_high,'low':coin.price_low,'close':coin.price_low,'volume':coin.volume})
+        print(coin.coin_name, coin.price_open, coin.date)
     return jsonify(dictionary)
 
 
