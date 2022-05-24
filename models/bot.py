@@ -1,28 +1,58 @@
-from app import db
+import requests
+from app import db,ma
 from .user import User
+from .transaction import Transaction
 
 class Bot(db.Model):
     bot_id = db.Column(db.Integer,primary_key = True)
     coin_name = db.Column(db.String(30))
     buy_percentage = db.Column(db.Float)
     is_active = db.Column(db.Boolean)
+    risk = db.Column(db.Float)
+    bought = db.Column(db.Boolean)
     def __init__(self,bot_id,coin_name):
         super().__init__(bot_id = bot_id,coin_name= coin_name,is_active = False,buy_percentage = 1.0)
     def switch_activate(self):
         self.is_active = not self.is_active
         db.session.commit()
-    def buy(self):
-        if(self.is_active):
-            user_intance = User.query.get(self.bot_id)
-            transfer_amount = user_intance.usd_amount*self.buy_percentage
-            user_intance.usd_amount -= transfer_amount
-            setattr(user_intance,self.coin_name,getattr(user_intance,self.coin_name)+transfer_amount)
+    def switch_coin(self,coin_name):
+        self.coin_name = coin_name
+        db.session.commit()
+    def make_trade(self,confidence,data):
+        if(confidence < 0):
+            if(abs(confidence) < self.risk):
+                self.__sell(data)
+        else:
+            if(abs(confidence) > self.risk):
+                self.__buy(data)
+    def __buy(self,data):
+        if self.is_active and not self.bought:
+            user_instance = User.query.get(self.bot_id)
+            transfer_amount = user_instance.usd*self.buy_percentage
+            user_instance.usd -= transfer_amount
+            usd_amount = transfer_amount
+            exchangeRate = data[self.coin_name]
+            coin_amount = transfer_amount/exchangeRate
+            setattr(user_instance,self.coin_name,getattr(user_instance,self.coin_name)+coin_amount)
+            self.bought = True
+            tx_instance = Transaction(self.bot_id,exchangeRate,True,self.coin_name,coin_amount,usd_amount)
+            db.session.add(tx_instance)
             db.session.commit()
-    def sell(self):
-        if(self.is_active):
-            user_intance = User.query.get(self.bot_id)
-            coin_amount = getattr(user_intance,self.coin_name)
+    def __sell(self,data):
+        if self.is_active and self.bought:
+            user_instance = User.query.get(self.bot_id)
+            coin_amount = getattr(user_instance,self.coin_name)
             transfer_amount = coin_amount*self.buy_percentage
-            setattr(user_intance,self.coin_name,coin_amount - transfer_amount)
-            user_intance.usd_amount += transfer_amount
+            exchangeRate = data[self.coin_name]
+            usd_amount = exchangeRate * coin_amount
+            setattr(user_instance,self.coin_name,coin_amount - transfer_amount)
+            user_instance.usd += usd_amount
+            self.bought = False
+            tx_instance = Transaction(self.bot_id,exchangeRate,True,self.coin_name,coin_amount,usd_amount)
+            db.session.add(tx_instance)
             db.session.commit()
+
+class BotSchema(ma.Schema):
+    class Meta:
+        fields = ("bot_id", "coin_name",'buy_percentage','is_active','risk','bought')
+        model = Bot

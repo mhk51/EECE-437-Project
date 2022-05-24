@@ -1,3 +1,5 @@
+from email import header
+import math
 from sched import scheduler
 from flask import abort, render_template, session
 from flask import Flask
@@ -56,11 +58,12 @@ Email = Mail(app)
 
 from models.user import User, UserSchema
 from models.coin import Coin, CoinSchema
-from models.bot import Bot
+from models.bot import Bot,BotSchema
+from models.transaction import Transaction,TransactionSchema
 
 
 # transaction_schema = CoinSchema()
-# transactions_schema = CoinSchema(many=True)
+transactions_schema = TransactionSchema(many=True)
 
 
 model = CoinPrediction('model.json','model_weights.h5')
@@ -68,8 +71,11 @@ model = CoinPrediction('model.json','model_weights.h5')
 user_schema = UserSchema()
 
 
-@app.route('/Sign_in.html')
+@app.route('/Sign_in.html',methods = ['GET','POST'])
 def init():
+    if(request.method == 'POST'):
+        print(request.form['username'])
+        print(request.form['password'])
     return render_template('Sign_in.html')
 
 
@@ -109,31 +115,61 @@ def decode_token(token):
 
 
 
-@scheduler.task('interval', id='getCryptoPrices', seconds=10)
+@scheduler.task('interval', id='getCryptoPrices', seconds=60)
 def getCryptoPrices():
     with scheduler.app.app_context():
-        url = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=200'
-        headers = {
-            'X-CoinAPI-Key': 'ADAF1030-FCA4-4505-B6D0-44AD29F4C081',
+        url_btc = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=200'
+        headers_btc = {
+            'X-CoinAPI-Key': '7F5B67D5-EE33-4B3D-924D-3E2384904663',
+        }
+        url_eth = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_ETH_USD/latest?period_id=1HRS&limit=200'
+        headers_eth = {
+            'X-CoinAPI-Key': '1F18A075-8090-4F2E-9AF1-94D22E9E7A2F',
         }
         try:
-            response = requests.get(url, headers=headers)
-            json_object = response.json()  
-            df = pd.DataFrame(json_object)
-            df = df[['time_period_start','price_open','price_high','price_low','price_close','volume_traded']]
-            for i in range(df.shape[0]):
-                row = df.iloc[i]
+            response_btc = requests.get(url_btc, headers=headers_btc)
+            json_btc = response_btc.json()
+            
+            df_btc = pd.DataFrame(json_btc)
+            # df_btc = pd.read_json("data.json")
+            df_btc = df_btc[['time_period_start','price_open','price_high','price_low','price_close','volume_traded']]
+            for i in range(df_btc.shape[0]):
+                row = df_btc.iloc[i]
                 date = parser.parse(row['time_period_start'])
                 coin_instance = Coin("Bitcoin",row['price_open'],row['price_high'],row['price_low'],row['price_close'],row['volume_traded'],date)
                 db.session.merge(coin_instance)
-            df = df.drop('time_period_start',axis=1).pct_change().dropna()
-            
-            features = []
-            input_data = df.iloc[0:5].values
-            features.append(input_data)
-            features = np.array(features)
+            df_btc = df_btc.drop('time_period_start',axis=1).pct_change().dropna()
+            input_data = df_btc.iloc[0:5].values
+            sigmoid = model.predict_coin(np.array([input_data]))
+            inverse_sigmoid = -math.log((1-sigmoid)/sigmoid)
+            confidence_btc = (math.tanh(inverse_sigmoid))
+            exchangeRates = exchange()
 
-            print(model.predict_coin(features))
+
+            response_eth = requests.get(url_eth,headers=headers_eth)
+            json_eth = response_eth.json()  
+            df_eth = pd.DataFrame(json_eth)
+            # df_eth = pd.read_json("data.json")
+            df_eth = df_eth[['time_period_start','price_open','price_high','price_low','price_close','volume_traded']]
+            for i in range(df_eth.shape[0]):
+                row = df_eth.iloc[i]
+                date = parser.parse(row['time_period_start'])
+                coin_instance = Coin("Bitcoin",row['price_open'],row['price_high'],row['price_low'],row['price_close'],row['volume_traded'],date)
+                db.session.merge(coin_instance)
+            df_eth = df_eth.drop('time_period_start',axis=1).pct_change().dropna()
+            input_data = df_eth.iloc[0:5].values
+            sigmoid = model.predict_coin(np.array([input_data]))
+            inverse_sigmoid = -math.log((1-sigmoid)/sigmoid)
+            confidence_eth = (math.tanh(inverse_sigmoid))
+        
+            print("ETH",confidence_eth)
+            print("BTC",confidence_btc)
+            bots = Bot.query.all()
+            for bot in bots:
+                if(bot.coin_name == 'bitcoin'):
+                    bot.make_trade(confidence_btc,exchangeRates)
+                elif bot.coin_name == 'ethereum' :
+                    bot.make_trade(confidence_eth,exchangeRates)
 
 
         except (ConnectionError, Timeout, TooManyRedirects) as e:
@@ -142,6 +178,22 @@ def getCryptoPrices():
 
         db.session.commit()
         return jsonify(message='success')
+
+def exchange():
+    url = 'https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest'
+    headers = {
+    'Accepts': 'application/json',
+    'X-CMC_PRO_API_KEY': 'd00bc3fb-616a-40fa-8cba-14ce888e5c70',
+    }
+    response = requests.get(url,headers=headers)
+    json_object = response.json()
+    bitcoin =  json_object['data'][0]
+    ethereum = json_object['data'][1]
+    data = {
+            'bitcoin':bitcoin['quote']['USD']['price'],
+            'ethereum':ethereum['quote']['USD']['price']
+    }
+    return data
 
 
 @app.route('/getTrend', methods=['GET'])
@@ -174,7 +226,7 @@ def add_user():
         abort(403)
     else:
         newuser = User(name, pwd, mail, dob)
-        bot_instance = Bot(newuser.id,'bitcoin_amount')
+        bot_instance = Bot(newuser.id,'bitcoin')
         db.session.add(bot_instance)
         db.session.commit()
         db.session.add(newuser)
@@ -204,31 +256,50 @@ def authenticate():
         abort(403)
     # create token
     token = create_token(user_db.id)
-    session["id"] = user_db.id
-    session.modified = True
+    # session["id"] = user_db.id
+    # session.modified = True
     return jsonify({"token": token})
 
-
-@app.route('/Sell',methods = ['GET'])
-def sell_assets():
-    id = session['id']
-    bot_intance = Bot.query.get(id)
-    bot_intance.sell()
-    return 'success'
-
-@app.route('/Buy',methods = ['GET'])
-def buy_assets():
-    coin_name = 'ethereum_amount'
-    id = session['id']
-    bot_intance = Bot.query.get(id)
-    bot_intance.coin_name = coin_name
-    bot_intance.buy()
-    return 'success'
+@app.route('/transactions',methods=['GET'])
+def transactions():
+    user_id = None
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    if(user_id == None):
+        abort(403)
+    transactions = Transaction.query.filter_by(user_id=user_id).all()
+    return jsonify(transactions_schema.dump(transactions))
 
 @app.route('/activateBot',methods = ['GET'])
 def activateBot():
-    id = session['id']
-    bot_intance = Bot.query.get(id)
+    user_id = None
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    if(user_id == None):
+        abort(403)
+    bot_intance = Bot.query.get(user_id)
     bot_intance.switch_activate()
-    return 'success'
+    return 
 
+@app.route('/changeCoin',methods = ['POST'])
+def changeCoin():
+    user_id = None
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    if(user_id == None):
+        abort(403)
+    coin_name = request.json['coin_name']
+    bot_instance = Bot.query.get(user_id)
+    bot_instance.switch_coin(coin_name)
