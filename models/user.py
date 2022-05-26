@@ -6,7 +6,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(30), unique=True)
     hashed_password = db.Column(db.String(128))
-    dob = db.Column(db.String(128))
+    dob = db.Column(db.DateTime(128))
     mail = db.Column(db.String(128))
     bitcoin = db.Column(db.Float)
     ethereum = db.Column(db.Float)

@@ -5,8 +5,9 @@ import datetime
 from .user import User
 
 class Transaction(db.Model):
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False,primary_key=True)
-    date = db.Column(db.DateTime,primary_key=True)
+    id = db.Column(db.Integer,primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    date = db.Column(db.DateTime)
     coin_amount = db.Column(db.Float,nullable=False)
     usd_amount = db.Column(db.Float, nullable=False)
     exchange_rate = db.Column(db.Float,nullable=False)
@@ -24,5 +25,5 @@ class Transaction(db.Model):
 
 class TransactionSchema(ma.Schema):
     class Meta:
-        fields = ("user_id","date","coin_amount","usd_amount","exchange_rate","coin_name","buying")
+        fields = ("id","user_id","date","coin_amount","usd_amount","exchange_rate","coin_name","buying")
         model = Transaction

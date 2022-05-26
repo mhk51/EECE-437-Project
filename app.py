@@ -69,6 +69,7 @@ transactions_schema = TransactionSchema(many=True)
 model = CoinPrediction('model.json','model_weights.h5')
 
 user_schema = UserSchema()
+bot_schema = BotSchema()
 
 
 @app.route('/Sign_in.html',methods = ['GET','POST'])
@@ -115,7 +116,7 @@ def decode_token(token):
 
 
 
-@scheduler.task('interval', id='getCryptoPrices', seconds=60)
+@scheduler.task('interval', id='getCryptoPrices', minutes=30)
 def getCryptoPrices():
     with scheduler.app.app_context():
         url_btc = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=200'
@@ -274,8 +275,8 @@ def transactions():
     transactions = Transaction.query.filter_by(user_id=user_id).all()
     return jsonify(transactions_schema.dump(transactions))
 
-@app.route('/activateBot',methods = ['GET'])
-def activateBot():
+@app.route('/switchActivate',methods = ['GET'])
+def switchActivate():
     user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
@@ -287,10 +288,27 @@ def activateBot():
         abort(403)
     bot_intance = Bot.query.get(user_id)
     bot_intance.switch_activate()
-    return 
+    return jsonify(bot_schema.dump(bot_intance))
 
-@app.route('/changeCoin',methods = ['POST'])
-def changeCoin():
+
+@app.route('/buy',methods = ['GET'])
+def buy():
+    user_id = None
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    if(user_id == None):
+        abort(403)
+    bot_instance = Bot.query.get(user_id)
+    bot_instance.make_trade(0.9,{'bitcoin':30000,'ethereum':2000})
+    return 'success'
+
+
+@app.route('/change_param',methods = ['POST'])
+def changeParams():
     user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
@@ -301,5 +319,24 @@ def changeCoin():
     if(user_id == None):
         abort(403)
     coin_name = request.json['coin_name']
+    buy_percentage = request.json['buy_percentage']
+    risk = request.json['risk']
     bot_instance = Bot.query.get(user_id)
-    bot_instance.switch_coin(coin_name)
+    bot_instance.changeParams(risk,buy_percentage,coin_name)
+    return jsonify(bot_schema.dump(bot_instance))
+
+
+
+@app.route('/bot',methods = ['GET'])
+def bot():
+    user_id = None
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    if(user_id == None):
+        abort(403)
+    bot_instance = Bot.query.get(user_id)
+    return jsonify(bot_schema.dump(bot_instance))

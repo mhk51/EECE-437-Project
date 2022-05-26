@@ -15,7 +15,11 @@ class Bot(db.Model):
     def switch_activate(self):
         self.is_active = not self.is_active
         db.session.commit()
-    def switch_coin(self,coin_name):
+    def changeParams(self,risk,percentage,coin_name):
+        if(percentage != 0):
+            self.buy_percentage = percentage
+        if(risk != 0):
+            self.risk = risk
         self.coin_name = coin_name
         db.session.commit()
     def make_trade(self,confidence,data):
@@ -51,6 +55,8 @@ class Bot(db.Model):
             tx_instance = Transaction(self.bot_id,exchangeRate,True,self.coin_name,coin_amount,usd_amount)
             db.session.add(tx_instance)
             db.session.commit()
+
+    
 
 class BotSchema(ma.Schema):
     class Meta:
