@@ -1,3 +1,4 @@
+from base64 import decode
 from email import header
 import math
 from sched import scheduler
@@ -291,7 +292,7 @@ def switchActivate():
     return jsonify(bot_schema.dump(bot_intance))
 
 
-@app.route('/buy',methods = ['GET'])
+@app.route('/buy',methods = ['POST'])
 def buy():
     user_id = None
     tkn = extract_auth_token(request)
@@ -303,7 +304,7 @@ def buy():
     if(user_id == None):
         abort(403)
     bot_instance = Bot.query.get(user_id)
-    bot_instance.make_trade(0.9,{'bitcoin':30000,'ethereum':2000})
+    bot_instance.make_trade(request.json['confidence'],request.json['data'])
     return 'success'
 
 
@@ -340,3 +341,26 @@ def bot():
         abort(403)
     bot_instance = Bot.query.get(user_id)
     return jsonify(bot_schema.dump(bot_instance))
+
+
+
+@app.route('/performance',methods = ['POST'])
+def performance():
+    user_id = None
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    if(user_id == None):
+        abort(403)
+    days = request.json['days']
+    print(days)
+    list = []
+    end_date = datetime.datetime.now()
+    start_date = datetime.datetime.now() - datetime.timedelta(days=days)
+    transactions  = Transaction.query.filter(Transaction.date.between(start_date, end_date)).all()
+    for tx in transactions:
+        list.append({'id':tx.id,'date':tx.date,'amount':tx.user_total})
+    return jsonify(list)
