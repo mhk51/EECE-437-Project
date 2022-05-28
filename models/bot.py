@@ -24,10 +24,10 @@ class Bot(db.Model):
         db.session.commit()
     def make_trade(self,confidence,data):
         if(confidence < 0):
-            if(abs(confidence) < self.risk):
+            if(abs(confidence) > self.risk):
                 self.__sell(data)
         else:
-            if(abs(confidence) > self.risk):
+            if(abs(confidence) > 1-self.risk):
                 self.__buy(data)
     def __buy(self,data):
         if self.is_active and not self.bought:
