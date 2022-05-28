@@ -8,20 +8,18 @@ class User(db.Model):
     hashed_password = db.Column(db.String(128))
     dob = db.Column(db.DateTime(128))
     mail = db.Column(db.String(128))
-    bitcoin = db.Column(db.Float)
-    ethereum = db.Column(db.Float)
-    bnb = db.Column(db.Float)
-    usd = db.Column(db.Float)
+    wallet = db.relationship('Wallet',backref='user',uselist=False)
+    bot = db.relationship('Bot',backref='user',uselist=False)
 
     def __init__(self, username, password, mail, dob):
-        super(User, self).__init__(username=username, dob=dob, mail=mail,bitcoin = 0,ethereum = 0,bnb = 0,usd = 100)
+        super(User, self).__init__(username=username, dob=dob, mail=mail)
         self.hashed_password = bcrypt.generate_password_hash(password)
         
 
 
 class UserSchema(ma.Schema):
     class Meta:
-        fields = ("id", "username", "mail", "dob",'bitcoin','ethereum','bnb','usd')
+        fields = ("id", "username", "mail", "dob")
         model = User
 
 user_schema = UserSchema()

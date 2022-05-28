@@ -61,16 +61,17 @@ from models.user import User, UserSchema
 from models.coin import Coin, CoinSchema
 from models.bot import Bot,BotSchema
 from models.transaction import Transaction,TransactionSchema
+from models.wallet import Wallet,WalletSchema
 
-
-# transaction_schema = CoinSchema()
-transactions_schema = TransactionSchema(many=True)
 
 
 model = CoinPrediction('model.json','model_weights.h5')
 
+transactions_schema = TransactionSchema(many=True)
+coins_schema = CoinSchema(many=True)
 user_schema = UserSchema()
 bot_schema = BotSchema()
+wallet_schema = WalletSchema()
 
 
 @app.route('/Sign_in.html',methods = ['GET','POST'])
@@ -156,7 +157,7 @@ def getCryptoPrices():
             for i in range(df_eth.shape[0]):
                 row = df_eth.iloc[i]
                 date = parser.parse(row['time_period_start'])
-                coin_instance = Coin("Bitcoin",row['price_open'],row['price_high'],row['price_low'],row['price_close'],row['volume_traded'],date)
+                coin_instance = Coin("Ethereum",row['price_open'],row['price_high'],row['price_low'],row['price_close'],row['volume_traded'],date)
                 db.session.merge(coin_instance)
             df_eth = df_eth.drop('time_period_start',axis=1).pct_change().dropna()
             input_data = df_eth.iloc[0:5].values
@@ -198,17 +199,14 @@ def exchange():
     return data
 
 
-@app.route('/getTrend', methods=['GET'])
+@app.route('/getTrend', methods=['POST'])
 def getTrend():
-    coinList = Coin.query.all()
-    dictionary = {}
-    for coin in coinList:
-        if (coin.coin_name not in dictionary):
-            dictionary[coin.coin_name] = [{'date': coin.date,'open': coin.price_open,'high':coin.price_high,'low':coin.price_low,'close':coin.price_low,'volume':coin.volume}]
-        else:
-            dictionary[coin.coin_name].append({'date': coin.date,'open': coin.price_open,'high':coin.price_high,'low':coin.price_low,'close':coin.price_low,'volume':coin.volume})
-        print(coin.coin_name, coin.price_open, coin.date)
-    return jsonify(dictionary)
+    coin_name = request.json['coin_name']
+    hours = request.json['hours']
+    end_date = datetime.datetime.now()
+    start_date = datetime.datetime.now() - datetime.timedelta(hours=hours)
+    coinList  = Coin.query.filter(Coin.date.between(start_date, end_date)).filter_by(coin_name=coin_name).all()
+    return jsonify(coins_schema.dump(coinList))
 
 
 @app.route('/add_user', methods=['POST'])
@@ -228,9 +226,10 @@ def add_user():
         abort(403)
     else:
         newuser = User(name, pwd, mail, dob)
-        bot_instance = Bot(newuser.id,'bitcoin')
-        db.session.add(bot_instance)
-        db.session.commit()
+        wallet_instance = Wallet()
+        bot_instance = Bot('bitcoin')
+        newuser.wallet = wallet_instance
+        newuser.bot = bot_instance
         db.session.add(newuser)
         db.session.commit()
         sender = 'terkiz.club@gmail.com'
