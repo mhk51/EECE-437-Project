@@ -1,11 +1,11 @@
-from base64 import decode
 from email import header
+import json
 import math
 from sched import scheduler
+from xmlrpc.client import DateTime
 from flask import abort, render_template, session
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import desc
 from flask_bcrypt import Bcrypt
 from flask_marshmallow import Marshmallow
 from flask import request
@@ -14,12 +14,8 @@ from flask_cors import CORS
 import datetime
 from dateutil import parser
 from flask_cors import CORS, cross_origin
-from datetime import timedelta
-from importlib_metadata import method_cache
 import jwt
-from requests import Request, Session
 from requests.exceptions import Timeout, TooManyRedirects, ConnectionError
-import json
 from flask_apscheduler import APScheduler
 from flask_mail import Mail, Message
 from Bot import CoinPrediction
@@ -198,6 +194,14 @@ def exchange():
     }
     return data
 
+def wallet_total(user_id):
+    wallet_instance = Wallet.query.get(user_id)
+    data = exchange()
+    bitcoin_amount = wallet_instance.bitcoin*data['bitcoin']
+    ethereum_amount = wallet_instance.ethereum*data['ethereum']
+    usd_amount = wallet_instance.usd
+    return bitcoin_amount+ethereum_amount+usd_amount
+
 
 @app.route('/getTrend', methods=['POST'])
 def getTrend():
@@ -237,7 +241,7 @@ def add_user():
         subject ="Welcome to Mokash Trading Bot"
         msg = Message(subject, sender=sender, recipients=recipients)
         msg.body = "Thank you for joining Mokash Trading Bot, " + name+ " \n We hope that you will like it here! \n Feel free to look through the site. \n Best,\n MoKash Trading Team. "
-        # Email.send(msg)
+        Email.send(msg)
 
         return jsonify(user_schema.dump(newuser))
 
@@ -249,42 +253,35 @@ def authenticate():
     if not id or not pwd:
         abort(400)
     user_db = User.query.filter_by(username=usname).first()
-    # no username exists
     if user_db is None:
         abort(403)
-    # password don't match
     if not bcrypt.check_password_hash(user_db.hashed_password, pwd):
         abort(403)
-    # create token
     token = create_token(user_db.id)
-    # session["id"] = user_db.id
-    # session.modified = True
     return jsonify({"token": token})
 
 @app.route('/transactions',methods=['GET'])
 def transactions():
-    user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
         try:
             user_id = decode_token(tkn)
         except jwt.exceptions.InvalidSignatureError:
             abort(403)
-    if(user_id == None):
+    else:
         abort(403)
     transactions = Transaction.query.filter_by(user_id=user_id).all()
     return jsonify(transactions_schema.dump(transactions))
 
 @app.route('/switchActivate',methods = ['GET'])
 def switchActivate():
-    user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
         try:
             user_id = decode_token(tkn)
         except jwt.exceptions.InvalidSignatureError:
             abort(403)
-    if(user_id == None):
+    else:
         abort(403)
     bot_intance = Bot.query.get(user_id)
     bot_intance.switch_activate()
@@ -293,14 +290,13 @@ def switchActivate():
 
 @app.route('/buy',methods = ['POST'])
 def buy():
-    user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
         try:
             user_id = decode_token(tkn)
         except jwt.exceptions.InvalidSignatureError:
             abort(403)
-    if(user_id == None):
+    else:
         abort(403)
     bot_instance = Bot.query.get(user_id)
     bot_instance.make_trade(request.json['confidence'],request.json['data'])
@@ -309,14 +305,13 @@ def buy():
 
 @app.route('/change_param',methods = ['POST'])
 def changeParams():
-    user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
         try:
             user_id = decode_token(tkn)
         except jwt.exceptions.InvalidSignatureError:
             abort(403)
-    if(user_id == None):
+    else:
         abort(403)
     coin_name = request.json['coin_name']
     buy_percentage = request.json['buy_percentage']
@@ -329,14 +324,13 @@ def changeParams():
 
 @app.route('/bot',methods = ['GET'])
 def bot():
-    user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
         try:
             user_id = decode_token(tkn)
         except jwt.exceptions.InvalidSignatureError:
             abort(403)
-    if(user_id == None):
+    else:
         abort(403)
     bot_instance = Bot.query.get(user_id)
     return jsonify(bot_schema.dump(bot_instance))
@@ -345,21 +339,40 @@ def bot():
 
 @app.route('/performance',methods = ['POST'])
 def performance():
-    user_id = None
     tkn = extract_auth_token(request)
     if tkn is not None:
         try:
             user_id = decode_token(tkn)
         except jwt.exceptions.InvalidSignatureError:
             abort(403)
-    if(user_id == None):
+    else:
         abort(403)
     days = request.json['days']
-    print(days)
     list = []
     end_date = datetime.datetime.now()
     start_date = datetime.datetime.now() - datetime.timedelta(days=days)
     transactions  = Transaction.query.filter(Transaction.date.between(start_date, end_date)).all()
     for tx in transactions:
         list.append({'id':tx.id,'date':tx.date,'amount':tx.user_total})
+    list.append({'id':tx.id+1,'date':datetime.datetime.now(),'amount':wallet_total(user_id)})
     return jsonify(list)
+
+
+
+@app.route('/wallet',methods=['GET'])
+def wallet():
+    tkn = extract_auth_token(request)
+    if tkn is not None:
+        try:
+            user_id = decode_token(tkn)
+        except jwt.exceptions.InvalidSignatureError:
+            abort(403)
+    else:
+        abort(403)
+    wallet_instance = Wallet.query.get(user_id)
+    return jsonify(wallet_schema.dump(wallet_instance))
+
+
+@app.route('/exchangeRate',methods=['GET'])
+def exchangeRate():
+    return exchange()

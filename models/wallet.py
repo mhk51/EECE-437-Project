@@ -15,5 +15,5 @@ class Wallet(db.Model):
 
 class WalletSchema(ma.Schema):
     class Meta:
-        fields = ("wallet_id","user_id","bitcoin","ethereum","bnb","usd")
+        fields = ("wallet_id","bitcoin","ethereum","bnb","usd")
         model = Wallet
