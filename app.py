@@ -51,6 +51,13 @@ app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
 # app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 CORS(app)
 db = SQLAlchemy(app)
+
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 465
+app.config['MAIL_USERNAME'] = 'remextrading3@gmail.com'
+app.config['MAIL_PASSWORD'] = 'remexTrading@3'
+app.config['MAIL_USE_TLS'] = False
+app.config['MAIL_USE_SSL'] = True
 Email = Mail(app)
 
 from models.user import User, UserSchema
@@ -238,9 +245,9 @@ def add_user():
         db.session.commit()
         sender = 'terkiz.club@gmail.com'
         recipients = [mail]
-        subject ="Welcome to Mokash Trading Bot"
+        subject ="Welcome to Moekash Trading Bot"
         msg = Message(subject, sender=sender, recipients=recipients)
-        msg.body = "Thank you for joining Mokash Trading Bot, " + name+ " \n We hope that you will like it here! \n Feel free to look through the site. \n Best,\n MoKash Trading Team. "
+        msg.body = "Thank you for joining Moekash Trading Bot, " + name+ " \n We hope that you will like it here! \n Feel free to look through the site. \n Best,\n MoKash Trading Team. "
         Email.send(msg)
 
         return jsonify(user_schema.dump(newuser))
