@@ -121,8 +121,8 @@ def decode_token(token):
 
 
 
-@scheduler.task('interval', id='getCryptoPrices', minutes=30)
-def getCryptoPrices():
+@scheduler.task('interval', id='get_crypto_prices', minutes=30)
+def get_crypto_prices():
     with scheduler.app.app_context():
         url_btc = 'https://rest.coinapi.io/v1/ohlcv/BITSTAMP_SPOT_BTC_USD/latest?period_id=1HRS&limit=200'
         headers_btc = {
@@ -151,7 +151,6 @@ def getCryptoPrices():
             confidence_btc = (math.tanh(inverse_sigmoid))
             exchangeRates = exchange()
 
-
             response_eth = requests.get(url_eth,headers=headers_eth)
             json_eth = response_eth.json()  
             df_eth = pd.DataFrame(json_eth)
@@ -167,9 +166,7 @@ def getCryptoPrices():
             sigmoid = model.predict_coin(np.array([input_data]))
             inverse_sigmoid = -math.log((1-sigmoid)/sigmoid)
             confidence_eth = (math.tanh(inverse_sigmoid))
-        
-            print("ETH",confidence_eth)
-            print("BTC",confidence_btc)
+
             bots = Bot.query.all()
             for bot in bots:
                 if(bot.coin_name == 'bitcoin'):
@@ -210,8 +207,8 @@ def wallet_total(user_id):
     return bitcoin_amount+ethereum_amount+usd_amount
 
 
-@app.route('/getTrend', methods=['POST'])
-def getTrend():
+@app.route('/trend', methods=['POST'])
+def get_trend():
     coin_name = request.json['coin_name']
     hours = request.json['hours']
     end_date = datetime.datetime.now()
